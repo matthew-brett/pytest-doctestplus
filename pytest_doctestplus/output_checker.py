@@ -16,11 +16,14 @@ import math
 
 FIX = doctest.register_optionflag('FIX')
 FLOAT_CMP = doctest.register_optionflag('FLOAT_CMP')
+FLOAT_CMP_4DP =  doctest.register_optionflag('FLOAT_CMP_4DP')
+FLOAT_CMP_6DP =  doctest.register_optionflag('FLOAT_CMP_6DP')
 REMOTE_DATA = doctest.register_optionflag('REMOTE_DATA')
 IGNORE_OUTPUT = doctest.register_optionflag('IGNORE_OUTPUT')
 IGNORE_OUTPUT_3 = doctest.register_optionflag('IGNORE_OUTPUT_3')
 IGNORE_WARNINGS = doctest.register_optionflag('IGNORE_WARNINGS')
 SHOW_WARNINGS = doctest.register_optionflag('SHOW_WARNINGS')
+SYMPY_EQUAL = doctest.register_optionflag('SYMPY_EQUAL')
 
 # These might appear in some doctests and are used in the default pytest
 # doctest plugin. This plugin doesn't actually implement these flags but this
@@ -100,7 +103,7 @@ class OutputChecker(doctest.OutputChecker):
         matches = self.num_want_rgx.finditer(text)
         return [match.group(1) for match in matches]
 
-    def equal_floats(self, a, b):
+    def equal_floats(self, a, b, dp=None):
         """
         Compare float strings.
         >>> OutputChecker().equal_floats('1.1', '1.10000000001')
@@ -109,6 +112,8 @@ class OutputChecker(doctest.OutputChecker):
         False
         """
         a, b = float(a), float(b)
+        if dp:
+            return round(a, dp) == round(b, dp)
         return isclose(a, b, rtol=self.rtol, atol=self.atol)
 
     def startswith(self, arr, prefix):
@@ -263,8 +268,11 @@ class OutputChecker(doctest.OutputChecker):
         numbers_want = [f for chunk in numbers_want_chunks for f in chunk]  # flatten array
         if len(numbers_got) != len(numbers_want):
             return False
+
+        dp = (4 if flags & FLOAT_CMP_4DP else
+              6 if flags & FLOAT_CMP_6DP else None)
         for ng, nw in zip(numbers_got, numbers_want):
-            if not self.equal_floats(ng, nw):
+            if not self.equal_floats(ng, nw, dp):
                 return False
 
         return True
@@ -276,7 +284,11 @@ class OutputChecker(doctest.OutputChecker):
         if flags & FIX:
             want, got = self.do_fixes(want, got)
 
-        if flags & FLOAT_CMP:
+        if SYMPY_EQUAL & flags:
+            from sympy import sympify
+            return sympify(want) == sympify(got)
+
+        if flags & (FLOAT_CMP | FLOAT_CMP_4DP | FLOAT_CMP_6DP):
             return self.normalize_floats(want, got, flags)
 
         return super().check_output(want, got, flags)
